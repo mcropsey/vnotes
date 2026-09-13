@@ -1,4 +1,4 @@
-# VulnNotes — Install / Deploy
+# VNotes — Install / Deploy
 
 Deliberately vulnerable Notes API (FastAPI + SQLite) for API security training.
 **Lab use only — never expose to the public internet.** Contains intentional
@@ -17,7 +17,7 @@ static/index.html      web UI
 ## Option A — Docker Compose (recommended)
 
 ```bash
-cd vulnnotes-src
+cd vnotes-src
 docker compose up -d --build
 ```
 
@@ -26,30 +26,30 @@ App is served on `http://<host>:8000`. Health check: `GET /health`.
 ## Option B — Plain Docker
 
 ```bash
-cd vulnnotes-src
-docker build -t vulnnotes:latest .
-docker run -d --name vulnnotes \
+cd vnotes-src
+docker build -t vnotes:latest .
+docker run -d --name vnotes \
   -p 8000:8000 \
-  -v vulnnotes-data:/app/data \
+  -v vnotes-data:/app/data \
   --restart unless-stopped \
-  vulnnotes:latest
+  vnotes:latest
 ```
 
 ## Option C — Run locally without Docker
 
 ```bash
-cd vulnnotes-src
+cd vnotes-src
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# DB defaults to /app/data/vulnnotes.db; override for a local run:
-export DB_PATH=./vulnnotes.db
+# DB defaults to /app/data/vnotes.db; override for a local run:
+export DB_PATH=./vnotes.db
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ## First-run data
 
 The SQLite DB is created automatically at `DB_PATH` (default
-`/app/data/vulnnotes.db`, persisted in the `vulnnotes-data` volume under Docker).
+`/app/data/vnotes.db`, persisted in the `vnotes-data` volume under Docker).
 Seed the demo accounts and notes:
 
 ```bash
@@ -66,14 +66,14 @@ Seeded accounts (see `scripts/README.md` for the full table):
 
 ## Config
 
-- `DB_PATH` — SQLite file path (default `/app/data/vulnnotes.db`).
+- `DB_PATH` — SQLite file path (default `/app/data/vnotes.db`).
 - JWT secret is **hardcoded** in `app/auth.py` (intentional vuln); HS256.
 
 ## Notes
 
 - No Dockerfile existed on disk on the original host (`hv-rocky-linux-1` /
   192.168.1.98); this source tree was extracted from the running
-  `vulnnotes:latest` image and the Dockerfile reconstructed from its build
+  `vnotes:latest` image and the Dockerfile reconstructed from its build
   history, so it reproduces the same image.
 - The companion attack/traffic scripts live in the `scripts/` subdirectory
   (point them at the new host with `--base-url`).

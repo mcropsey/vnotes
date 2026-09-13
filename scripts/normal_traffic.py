@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-normal_traffic.py — Baseline traffic generator for VulnNotes
+normal_traffic.py — Baseline traffic generator for VNotes
 Generates realistic legitimate user behaviour so Noname / Akamai Active Testing
 can learn a normal baseline before the BOLA exploit is introduced.
 
@@ -192,7 +192,7 @@ def worker_loop(worker_id: int, base_url: str, account: dict, duration: float):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VulnNotes normal traffic generator")
+    parser = argparse.ArgumentParser(description="VNotes normal traffic generator")
     parser.add_argument("--base-url", default="http://localhost:8000", help="API base URL")
     parser.add_argument("--duration", type=int, default=120, help="Run duration in seconds (default 120)")
     parser.add_argument("--workers",  type=int, default=4,   help="Concurrent worker count (default 4, max 4)")
@@ -200,7 +200,7 @@ def main():
 
     args.workers = min(args.workers, len(ACCOUNTS))
 
-    print(f"\n{BOLD}{CYAN}VulnNotes — Normal Traffic Generator{RESET}")
+    print(f"\n{BOLD}{CYAN}VNotes — Normal Traffic Generator{RESET}")
     print(f"{DIM}Target : {args.base_url}{RESET}")
     print(f"{DIM}Workers: {args.workers}  |  Duration: {args.duration}s{RESET}\n")
 

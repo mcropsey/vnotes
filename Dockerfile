@@ -1,5 +1,5 @@
-# VulnNotes — intentionally vulnerable Notes API (security training lab only)
-# Reconstructed from the running vulnnotes:latest image history.
+# VNotes — intentionally vulnerable Notes API (security training lab only)
+# Reconstructed from the running vnotes:latest image history.
 FROM python:3.12.14
 
 WORKDIR /app

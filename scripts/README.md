@@ -1,10 +1,10 @@
-# VulnNotes Lab Scripts
+# VNotes Lab Scripts
 
-Scripts for the deliberately vulnerable **VulnNotes API** (FastAPI + SQLite,
+Scripts for the deliberately vulnerable **VNotes API** (FastAPI + SQLite,
 BOLA on by-ID note endpoints + weak hardcoded JWT secret). Security training
 lab only — point at your own lab instance.
 
-Default target: `http://192.168.1.98:8000` (container `vulnnotes`)
+Default target: `http://192.168.1.98:8000` (container `vnotes`)
 
 ## Seeded accounts (from `POST /api/seed`)
 
@@ -15,7 +15,7 @@ Default target: `http://192.168.1.98:8000` (container `vulnnotes`)
 | charlie | charlie1 | user  |
 | admin   | admin123 | admin |
 
-JWT secret (leaked in `app/auth.py`): `vulnnotes-weak-secret-for-lab-only-do-not-use-in-prod` (HS256)
+JWT secret (leaked in `app/auth.py`): `vnotes-weak-secret-for-lab-only-do-not-use-in-prod` (HS256)
 
 ## Scripts
 

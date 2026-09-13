@@ -1,14 +1,14 @@
-# VulnNotes — deliberately vulnerable API, LAB USE ONLY. Do not expose publicly.
+# VNotes — deliberately vulnerable API, LAB USE ONLY. Do not expose publicly.
 services:
-  vulnnotes:
+  vnotes:
     build: .
-    image: vulnnotes:latest
-    container_name: vulnnotes
+    image: vnotes:latest
+    container_name: vnotes
     ports:
       - "8000:8000"
     volumes:
-      - vulnnotes-data:/app/data      # SQLite DB persists here (DB_PATH=/app/data/vulnnotes.db)
+      - vnotes-data:/app/data      # SQLite DB persists here (DB_PATH=/app/data/vnotes.db)
     restart: unless-stopped
 
 volumes:
-  vulnnotes-data:
+  vnotes-data:

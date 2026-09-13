@@ -1,4 +1,4 @@
-# VulnNotes
+# VNotes
 
 A deliberately **vulnerable** Notes API (FastAPI + SQLite) for API security
 training and tooling demos.

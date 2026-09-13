@@ -12,7 +12,7 @@ from .database import get_db
 from .schemas import TokenData
 
 # Intentionally weak / long-lived — part of the lab design
-SECRET_KEY = "vulnnotes-weak-secret-for-lab-only-do-not-use-in-prod"
+SECRET_KEY = "vnotes-weak-secret-for-lab-only-do-not-use-in-prod"
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 

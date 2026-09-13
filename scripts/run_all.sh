@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run the full VulnNotes lab sequence:
+# Run the full VNotes lab sequence:
 #   Phase 1: baseline traffic   (normal_traffic.py)
 #   Phase 2: API enumeration    (enumerate_api.py)
 #   Phase 3: attacks            (exploit_*.py)
@@ -43,7 +43,7 @@ run_phase() {
 
 {
     echo "============================================================"
-    echo "[$(now)] VulnNotes lab run — target: $BASE_URL  baseline: ${BASELINE_DURATION}s"
+    echo "[$(now)] VNotes lab run — target: $BASE_URL  baseline: ${BASELINE_DURATION}s"
     echo "============================================================"
 
     # timeout must exceed the baseline duration (duration + 30s grace)
@@ -59,7 +59,7 @@ run_phase() {
     run_phase "bola_rw"        "exploit_bola.py" 60
     run_phase "bola_delete"    "exploit_bola_delete.py" 60
 
-    echo "[$(now)] VulnNotes lab run complete"
+    echo "[$(now)] VNotes lab run complete"
 } >> "$LOG_FILE" 2>&1
 
 echo "Done. Log: $LOG_FILE"

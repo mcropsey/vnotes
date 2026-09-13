@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-enumerate_api.py — Full API surface enumeration for VulnNotes
+enumerate_api.py — Full API surface enumeration for VNotes
 Works out every endpoint: unauthenticated first, then authenticated as each
 seeded account. Reports status codes, what requires auth, and what data each
 endpoint exposes.
@@ -78,7 +78,7 @@ def login(client: httpx.Client, username: str, password: str) -> Optional[str]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VulnNotes full API enumeration")
+    parser = argparse.ArgumentParser(description="VNotes full API enumeration")
     parser.add_argument("--base-url", default="http://localhost:8000", help="API base URL")
     parser.add_argument("--include-destructive", action="store_true",
                         help="also probe mutating endpoints with a live account (creates/deletes a throwaway note)")
@@ -86,7 +86,7 @@ def main():
 
     print(f"""
 {CYAN}{BOLD}╔═══════════════════════════════════════════════════╗
-║   VulnNotes — API Surface Enumeration             ║
+║   VNotes — API Surface Enumeration             ║
 ║   FOR SECURITY TRAINING AND LAB USE ONLY          ║
 ╚═══════════════════════════════════════════════════╝{RESET}
 {DIM}Target: {args.base_url}{RESET}

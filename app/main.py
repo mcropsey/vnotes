@@ -19,7 +19,7 @@ from .database import engine, get_db
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="VulnNotes API",
+    title="VNotes API",
     description=(
         "Intentionally vulnerable Notes API for security training. "
         "Contains BOLA (API1:2023) and weak JWT design. For lab use only."
@@ -54,7 +54,7 @@ async def track_requests(request, call_next):
         while _req_log and _req_log[0] < cutoff:
             _req_log.popleft()
     response = await call_next(request)
-    response.headers["X-VulnNotes-Version"] = "1.0.0"
+    response.headers["X-VNotes-Version"] = "1.0.0"
     return response
 
 

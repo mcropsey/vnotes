@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 import os
 
-DB_PATH = os.environ.get("DB_PATH", "/app/data/vulnnotes.db")
+DB_PATH = os.environ.get("DB_PATH", "/app/data/vnotes.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 engine = create_engine(

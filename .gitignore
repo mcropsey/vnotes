@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local DB / runtime data
+*.db
+data/
+
+# Run logs (generated output)
+*.log

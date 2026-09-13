@@ -18,9 +18,8 @@ pipeline {
             steps {
                 sshagent(credentials: ['vnotes-deploy-ssh']) {
                     sh """
-                        rsync -az --delete \
-                          -e "ssh -o StrictHostKeyChecking=no" \
-                          ./ ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/
+                        ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'mkdir -p ${DEPLOY_PATH}'
+                        tar czf - --exclude='.git' . | ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'tar xzf - -C ${DEPLOY_PATH}'
                     """
                 }
             }
@@ -50,3 +49,4 @@ pipeline {
         }
     }
 }
+

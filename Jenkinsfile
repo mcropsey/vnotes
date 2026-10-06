@@ -21,6 +21,11 @@ pipeline {
         // this known-good tag rather than failing the whole pipeline.
         FALLBACK_CLI_VERSION = '3.71.0'
 
+        // Minimum finding severity that fails the build: high | medium | low | info | none.
+        // Without this flag the scan's exit code only reflects whether it *ran*, not
+        // what it found -- build 31 reported SUCCESS despite HIGH findings because of this.
+        SEVERITY_THRESHOLD = 'high'
+
         // This job builds */main only, so env.BRANCH_NAME is null here; GIT_BRANCH
         // resolves to 'origin/main', and the scanner wants the bare branch name.
         APP_VERSION = "${(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main').replaceAll('^origin/', '')}"
@@ -155,6 +160,7 @@ pipeline {
                             --env-id="$ENV_ID" \
                             --test-group-id="$TEST_GROUP_ID" \
                             --app-version="$APP_VERSION" \
+                            --severity-threshold="$SEVERITY_THRESHOLD" \
                             --verbose
                     '''
                 }

@@ -45,4 +45,4 @@ vulnerable app; `variants/fixed/` (+ `vnotes-fixed.tar.gz`) holds the hardened b
 (BOLA ownership checks, random persisted JWT secret, password policy on register,
 login throttling, security headers, locked-down CORS, redacted public feed).
 Seeded accounts/passwords are identical in both. Swap with
-`./switch-variant.sh vulnerable|fixed`; `app/` currently holds the **fixed** build.
+`./switch-variant.sh vulnerable|fixed`; `app/` currently holds the **vulnerable** (original) build; the fixed build was rolled back pending auth-compatibility with Active Testing.

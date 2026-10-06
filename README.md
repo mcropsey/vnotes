@@ -40,9 +40,13 @@ See [`INSTALL.md`](INSTALL.md) for non-Docker options and configuration, and
 
 ## Vulnerable / fixed variants
 
-`variants/vulnerable/` (+ `vnotes-vulnerable.tar.gz`) holds the original intentionally
-vulnerable app; `variants/fixed/` (+ `vnotes-fixed.tar.gz`) holds the hardened build
-(BOLA ownership checks, random persisted JWT secret, password policy on register,
-login throttling, security headers, locked-down CORS, redacted public feed).
-Seeded accounts/passwords are identical in both. Swap with
-`./switch-variant.sh vulnerable|fixed`; `app/` currently holds the **vulnerable** (original) build; the fixed build was rolled back pending auth-compatibility with Active Testing.
+- `variants/vulnerable/` (+ `vnotes-vulnerable.tar.gz`): original intentionally vulnerable app.
+- `variants/fixed/` (+ `vnotes-fixed.tar.gz`): auth-compatible fix — ownership checks on
+  `/api/notes/{id}` (BOLA), restricted CORS, security headers, redacted public feed.
+  Login/register/JWT behaviour is unchanged so Active Testing's dynamic auth still works.
+- `variants/fixed-strict/`: stricter build (also random JWT secret, register password policy,
+  login throttling). **Breaks Active Testing's dynamic-auth registration** (weak generated
+  passwords get 422), so it is not deployed.
+
+Seeded accounts/passwords are identical in all. Swap with `./switch-variant.sh vulnerable|fixed|fixed-strict`;
+`app/` currently holds the **fixed** build.

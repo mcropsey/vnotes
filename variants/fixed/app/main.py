@@ -6,7 +6,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -22,13 +22,13 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="VNotes API",
     description=(
-        "Notes API (hardened build): ownership checks, random JWT secret, "
-        "password policy, login throttling."
+        "Intentionally vulnerable Notes API for security training. "
+        "Contains BOLA (API1:2023) and weak JWT design. For lab use only."
     ),
     version="1.0.0",
     openapi_tags=[
         {"name": "auth", "description": "Registration, login, current user"},
-        {"name": "notes", "description": "CRUD — ownership enforced on by-ID endpoints"},
+        {"name": "notes", "description": "CRUD — BOLA present on by-ID endpoints"},
         {"name": "system", "description": "Stats, seed, health"},
     ],
 )
@@ -41,30 +41,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
-# Failed-login throttle: max attempts per (client ip, username) per window
-_LOGIN_MAX_FAILS = int(os.environ.get("LOGIN_MAX_FAILS", "10"))
-_LOGIN_WINDOW = timedelta(minutes=5)
-_login_fails: dict = {}
-_login_lock = threading.Lock()
-
-
-def _throttled(key) -> bool:
-    now = datetime.now(timezone.utc)
-    with _login_lock:
-        hits = [t for t in _login_fails.get(key, []) if now - t < _LOGIN_WINDOW]
-        _login_fails[key] = hits
-        return len(hits) >= _LOGIN_MAX_FAILS
-
-
-def _record_fail(key) -> None:
-    with _login_lock:
-        _login_fails.setdefault(key, []).append(datetime.now(timezone.utc))
-
-
-def _clear_fails(key) -> None:
-    with _login_lock:
-        _login_fails.pop(key, None)
 
 # In-memory 24-hour request counter
 _req_log: deque = deque()
@@ -84,7 +60,6 @@ async def track_requests(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Cache-Control"] = "no-store"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
@@ -168,9 +143,7 @@ def seed_data(db: Session = Depends(get_db)):
     created_notes = 0
     for username, title, content in NOTES:
         owner_id = uid_map.get(username)
-        if owner_id and not db.query(models.Note).filter(
-            models.Note.owner_id == owner_id, models.Note.title == title
-        ).first():
+        if owner_id:
             db.add(models.Note(title=title, content=content, owner_id=owner_id))
             created_notes += 1
     db.commit()
@@ -197,16 +170,10 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/api/auth/login", tags=["auth"], operation_id="login_user",
           response_model=schemas.Token)
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    key = (request.client.host if request.client else "?", form_data.username)
-    if _throttled(key):
-        raise HTTPException(status_code=429, detail="Too many failed attempts; try again later",
-                            headers={"Retry-After": "300"})
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
-        _record_fail(key)
         raise HTTPException(status_code=401, detail="Incorrect username or password")
-    _clear_fails(key)
     return {"access_token": create_access_token({"sub": user.username}), "token_type": "bearer"}
 
 

@@ -113,8 +113,16 @@ pipeline {
 
                         mkdir -p "$WORKSPACE/akamai"
 
+                        # docker login wants the registry HOST only, not the repo path.
+                        # Logging in against the full $ACTIVE_REGISTRY_URL stores the
+                        # credential under that longer string; the later `docker pull`
+                        # resolves the image's registry down to just the host and looks
+                        # up credentials under *that* key, finds nothing, and goes out
+                        # unauthenticated -- surfacing as a generic registry auth error
+                        # even when the credential itself is fine.
+                        ACTIVE_REGISTRY_HOST="${ACTIVE_REGISTRY_URL%%/*}"
                         echo "$ACTIVE_REGISTRY_PASSWORD" \
-                          | docker login "$ACTIVE_REGISTRY_URL" -u "$ACTIVE_REGISTRY_USER" --password-stdin
+                          | docker login "https://$ACTIVE_REGISTRY_HOST" -u "$ACTIVE_REGISTRY_USER" --password-stdin
 
                         # The backend can report a CLI version slightly ahead of what's
                         # actually published to GAR. Try it, and fall back to the last

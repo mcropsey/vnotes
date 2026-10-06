@@ -99,13 +99,12 @@ pipeline {
                         )"
                         TOKEN_HTTP_CODE="$(echo "$TOKEN_RESPONSE" | tail -n1)"
                         TOKEN_BODY="$(echo "$TOKEN_RESPONSE" | sed '$d')"
-                        if [ "$TOKEN_HTTP_CODE" != "200" ]; then
-                            echo "Token request to $ACTIVE_TOKEN_URL failed with HTTP $TOKEN_HTTP_CODE: $TOKEN_BODY" >&2
-                            exit 1
-                        fi
+                        # Success is "we got an accessToken", not a specific status code --
+                        # this endpoint returns 201 on success, not 200 (build 27 treated
+                        # a real success as a failure by checking for exactly "200").
                         ACTIVE_API_TOKEN="$(echo "$TOKEN_BODY" | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
                         if [ -z "$ACTIVE_API_TOKEN" ]; then
-                            echo "Could not find accessToken in response from $ACTIVE_TOKEN_URL: $TOKEN_BODY" >&2
+                            echo "Could not obtain an accessToken from $ACTIVE_TOKEN_URL (HTTP $TOKEN_HTTP_CODE): $TOKEN_BODY" >&2
                             exit 1
                         fi
                         export ACTIVE_API_TOKEN

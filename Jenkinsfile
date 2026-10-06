@@ -112,25 +112,37 @@ pipeline {
 
                         mkdir -p "$WORKSPACE/akamai"
 
-                        # docker login wants the registry HOST only, not the repo path.
-                        # Logging in against the full $ACTIVE_REGISTRY_URL stores the
-                        # credential under that longer string; the later `docker pull`
-                        # resolves the image's registry down to just the host and looks
-                        # up credentials under *that* key, finds nothing, and goes out
-                        # unauthenticated -- surfacing as a generic registry auth error
-                        # even when the credential itself is fine.
-                        ACTIVE_REGISTRY_HOST="${ACTIVE_REGISTRY_URL%%/*}"
-                        echo "$ACTIVE_REGISTRY_PASSWORD" \
-                          | docker login "https://$ACTIVE_REGISTRY_HOST" -u "$ACTIVE_REGISTRY_USER" --password-stdin
+                        # The registry pull credential is currently dead (confirmed: the
+                        # GCP key backing it was deleted, no self-service reissue available).
+                        # If an older tag is already cached locally on this agent from before
+                        # that broke, use it directly and skip the registry entirely --
+                        # `docker run` only hits the network if the image isn't already present.
+                        FALLBACK_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$FALLBACK_CLI_VERSION"
+                        if docker image inspect "$FALLBACK_IMAGE" >/dev/null 2>&1; then
+                            echo "Using locally cached $FALLBACK_IMAGE (registry pull credential is currently dead)"
+                            ACTIVE_CLI_IMAGE="$FALLBACK_IMAGE"
+                        else
+                            echo "$FALLBACK_IMAGE not cached locally; registry login is required"
+                            # docker login wants the registry HOST only, not the repo path.
+                            # Logging in against the full $ACTIVE_REGISTRY_URL stores the
+                            # credential under that longer string; the later `docker pull`
+                            # resolves the image's registry down to just the host and looks
+                            # up credentials under *that* key, finds nothing, and goes out
+                            # unauthenticated -- surfacing as a generic registry auth error
+                            # even when the credential itself is fine.
+                            ACTIVE_REGISTRY_HOST="${ACTIVE_REGISTRY_URL%%/*}"
+                            echo "$ACTIVE_REGISTRY_PASSWORD" \
+                              | docker login "https://$ACTIVE_REGISTRY_HOST" -u "$ACTIVE_REGISTRY_USER" --password-stdin
 
-                        # The backend can report a CLI version slightly ahead of what's
-                        # actually published to GAR. Try it, and fall back to the last
-                        # known-good tag instead of hard-failing the pipeline.
-                        ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$CLI_VERSION"
-                        if ! docker pull "$ACTIVE_CLI_IMAGE"; then
-                            echo "WARNING: $ACTIVE_CLI_IMAGE not available in registry yet; falling back to active-cli:$FALLBACK_CLI_VERSION" >&2
-                            ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$FALLBACK_CLI_VERSION"
-                            docker pull "$ACTIVE_CLI_IMAGE"
+                            # The backend can report a CLI version slightly ahead of what's
+                            # actually published to GAR. Try it, and fall back to the last
+                            # known-good tag instead of hard-failing the pipeline.
+                            ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$CLI_VERSION"
+                            if ! docker pull "$ACTIVE_CLI_IMAGE"; then
+                                echo "WARNING: $ACTIVE_CLI_IMAGE not available in registry yet; falling back to active-cli:$FALLBACK_CLI_VERSION" >&2
+                                ACTIVE_CLI_IMAGE="$FALLBACK_IMAGE"
+                                docker pull "$ACTIVE_CLI_IMAGE"
+                            fi
                         fi
 
                         docker run --rm \

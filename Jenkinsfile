@@ -87,15 +87,25 @@ pipeline {
                         # by the CI/CD wizard, but --api-token/ACTIVE_API_TOKEN accepts this.
                         # printf is a shell builtin and curl reads the body from stdin, so the
                         # secrets never appear in the process table.
-                        ACTIVE_API_TOKEN="$(
+                        #
+                        # No -f here: on failure we want the auth server's error body (which
+                        # never contains our secrets, only its own error description) printed
+                        # to the log, instead of curl silently swallowing it.
+                        TOKEN_RESPONSE="$(
                             printf '{"grant_type":"client_credentials","client_id":"%s","client_secret":"%s"}' \
                                 "$SA_CLIENT_ID" "$SA_CLIENT_SECRET" \
-                            | curl -fsS --max-time 30 -X POST "$ACTIVE_TOKEN_URL" \
-                                -H 'Content-Type: application/json' --data-binary @- \
-                            | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p'
+                            | curl -sS --max-time 30 -w '\n%{http_code}' -X POST "$ACTIVE_TOKEN_URL" \
+                                -H 'Content-Type: application/json' --data-binary @-
                         )"
+                        TOKEN_HTTP_CODE="$(echo "$TOKEN_RESPONSE" | tail -n1)"
+                        TOKEN_BODY="$(echo "$TOKEN_RESPONSE" | sed '$d')"
+                        if [ "$TOKEN_HTTP_CODE" != "200" ]; then
+                            echo "Token request to $ACTIVE_TOKEN_URL failed with HTTP $TOKEN_HTTP_CODE: $TOKEN_BODY" >&2
+                            exit 1
+                        fi
+                        ACTIVE_API_TOKEN="$(echo "$TOKEN_BODY" | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
                         if [ -z "$ACTIVE_API_TOKEN" ]; then
-                            echo "Failed to obtain an Active Testing API token from $ACTIVE_TOKEN_URL" >&2
+                            echo "Could not find accessToken in response from $ACTIVE_TOKEN_URL: $TOKEN_BODY" >&2
                             exit 1
                         fi
                         export ACTIVE_API_TOKEN

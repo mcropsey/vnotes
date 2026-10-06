@@ -15,6 +15,12 @@ pipeline {
         ENV_ID               = '59dc468f-d1ff-4be4-b02e-6f607c9f03f7'  // Notes -> "Jenkins Notes Integration" (cicd)
         TEST_GROUP_ID        = '892b51de-67cf-4328-beea-3ade61bcdeb2'  // Default API Security Tests
 
+        // Last CLI version confirmed present in GAR. The backend's reported
+        // /version can briefly outpace the published image after a backend
+        // release (seen with 3.71.0 -> 3.71.7, builds 16-18); fall back to
+        // this known-good tag rather than failing the whole pipeline.
+        FALLBACK_CLI_VERSION = '3.71.0'
+
         // This job builds */main only, so env.BRANCH_NAME is null here; GIT_BRANCH
         // resolves to 'origin/main', and the scanner wants the bare branch name.
         APP_VERSION = "${(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main').replaceAll('^origin/', '')}"
@@ -100,11 +106,21 @@ pipeline {
                         echo "$ACTIVE_REGISTRY_PASSWORD" \
                           | docker login "$ACTIVE_REGISTRY_URL" -u "$ACTIVE_REGISTRY_USER" --password-stdin
 
+                        # The backend can report a CLI version slightly ahead of what's
+                        # actually published to GAR. Try it, and fall back to the last
+                        # known-good tag instead of hard-failing the pipeline.
+                        ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$CLI_VERSION"
+                        if ! docker pull "$ACTIVE_CLI_IMAGE"; then
+                            echo "WARNING: $ACTIVE_CLI_IMAGE not available in registry yet; falling back to active-cli:$FALLBACK_CLI_VERSION" >&2
+                            ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$FALLBACK_CLI_VERSION"
+                            docker pull "$ACTIVE_CLI_IMAGE"
+                        fi
+
                         docker run --rm \
                           -e ACTIVE_BACKEND_URI \
                           -e ACTIVE_API_TOKEN \
                           -v "$WORKSPACE/akamai:/akamai" \
-                          "$ACTIVE_REGISTRY_URL/active-cli:$CLI_VERSION" \
+                          "$ACTIVE_CLI_IMAGE" \
                           scan \
                             --api-url="$ACTIVE_API_URL" \
                             --env-id="$ENV_ID" \

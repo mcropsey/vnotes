@@ -103,7 +103,7 @@ pipeline {
                             echo "Token request to $ACTIVE_TOKEN_URL failed with HTTP $TOKEN_HTTP_CODE: $TOKEN_BODY" >&2
                             exit 1
                         fi
-                        ACTIVE_API_TOKEN="$(echo "$TOKEN_BODY" | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+                        ACTIVE_API_TOKEN="$(echo "$TOKEN_BODY" | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
                         if [ -z "$ACTIVE_API_TOKEN" ]; then
                             echo "Could not find accessToken in response from $ACTIVE_TOKEN_URL: $TOKEN_BODY" >&2
                             exit 1

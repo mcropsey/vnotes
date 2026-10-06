@@ -42,7 +42,7 @@ See [`INSTALL.md`](INSTALL.md) for non-Docker options and configuration, and
 
 - `variants/vulnerable/` (+ `vnotes-vulnerable.tar.gz`): original intentionally vulnerable app.
 - `variants/fixed/` (+ `vnotes-fixed.tar.gz`): auth-compatible fix — ownership checks on
-  `/api/notes/{id}` (BOLA), restricted CORS, security headers, redacted public feed.
+  `/api/notes/{id}` (BOLA), random persisted JWT secret, restricted CORS, security headers, redacted public feed.
   Login/register/JWT behaviour is unchanged so Active Testing's dynamic auth still works.
 - `variants/fixed-strict/`: stricter build (also random JWT secret, register password policy,
   login throttling). **Breaks Active Testing's dynamic-auth registration** (weak generated

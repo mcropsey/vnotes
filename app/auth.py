@@ -1,3 +1,5 @@
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -8,11 +10,31 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from . import models
-from .database import get_db
+from .database import DB_PATH, get_db
 from .schemas import TokenData
 
-# Intentionally weak / long-lived — part of the lab design
-SECRET_KEY = "vnotes-weak-secret-for-lab-only-do-not-use-in-prod"
+def _load_secret() -> str:
+    """JWT signing key: JWT_SECRET env var, else a random key generated once
+    and persisted (0600) beside the SQLite DB so it survives restarts/rebuilds."""
+    env = os.environ.get("JWT_SECRET")
+    if env:
+        return env
+    path = os.path.join(os.path.dirname(DB_PATH), ".jwt_secret")
+    try:
+        with open(path) as f:
+            key = f.read().strip()
+            if len(key) >= 32:
+                return key
+    except FileNotFoundError:
+        pass
+    key = secrets.token_hex(32)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(key)
+    return key
+
+
+SECRET_KEY = _load_secret()
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 

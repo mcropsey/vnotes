@@ -37,3 +37,12 @@ See [`INSTALL.md`](INSTALL.md) for non-Docker options and configuration, and
 - **Weak JWT:** HS256 with a hardcoded, leaked secret in `app/auth.py`.
 - **Default credentials:** seeded accounts (`alice`/`alice123`,
   `admin`/`admin123`, etc.).
+
+## Vulnerable / fixed variants
+
+`variants/vulnerable/` (+ `vnotes-vulnerable.tar.gz`) holds the original intentionally
+vulnerable app; `variants/fixed/` (+ `vnotes-fixed.tar.gz`) holds the hardened build
+(BOLA ownership checks, random persisted JWT secret, password policy on register,
+login throttling, security headers, locked-down CORS, redacted public feed).
+Seeded accounts/passwords are identical in both. Swap with
+`./switch-variant.sh vulnerable|fixed`; `app/` currently holds the **fixed** build.

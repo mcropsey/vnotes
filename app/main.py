@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import threading
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -33,13 +32,12 @@ app = FastAPI(
     ],
 )
 
-_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # In-memory 24-hour request counter
@@ -56,10 +54,7 @@ async def track_requests(request, call_next):
         while _req_log and _req_log[0] < cutoff:
             _req_log.popleft()
     response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-VNotes-Version"] = "1.0.0"
     return response
 
 
@@ -189,7 +184,7 @@ def get_me(current_user: models.User = Depends(get_current_user)):
 def public_recent(db: Session = Depends(get_db)):
     notes = db.query(models.Note).order_by(models.Note.created_at.desc()).limit(10).all()
     return [
-        {"id": n.id, "title": f"Note #{n.id}", "preview": "[content hidden — sign in]", "created_at": n.created_at}
+        {"id": n.id, "title": n.title, "preview": n.content[:80], "created_at": n.created_at}
         for n in notes
     ]
 
@@ -217,6 +212,7 @@ def create_note(
     return note
 
 
+# BOLA: any authenticated user can read any note by ID — ownership is NOT checked
 @app.get("/api/notes/{note_id}", tags=["notes"], operation_id="get_note_by_id",
          response_model=schemas.NoteOut)
 def get_note(
@@ -227,11 +223,12 @@ def get_note(
     note = db.query(models.Note).filter(models.Note.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    if note.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    # INTENTIONAL BOLA — ownership check omitted
+    # Fix: if note.owner_id != current_user.id: raise HTTPException(403, "Not authorized")
     return note
 
 
+# BOLA: any authenticated user can overwrite any note by ID
 @app.put("/api/notes/{note_id}", tags=["notes"], operation_id="update_note",
          response_model=schemas.NoteOut)
 def update_note(
@@ -243,8 +240,7 @@ def update_note(
     note = db.query(models.Note).filter(models.Note.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    if note.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    # INTENTIONAL BOLA — ownership check omitted
     if note_in.title is not None:
         note.title = note_in.title
     if note_in.content is not None:
@@ -255,6 +251,7 @@ def update_note(
     return note
 
 
+# BOLA: any authenticated user can delete any note by ID
 @app.delete("/api/notes/{note_id}", tags=["notes"], operation_id="delete_note",
             status_code=204)
 def delete_note(
@@ -265,7 +262,6 @@ def delete_note(
     note = db.query(models.Note).filter(models.Note.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    if note.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    # INTENTIONAL BOLA — ownership check omitted
     db.delete(note)
     db.commit()

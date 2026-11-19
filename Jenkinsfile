@@ -37,6 +37,7 @@ pipeline {
         ACTIVE_REGISTRY_USER = '_json_key_base64'
         APP_ID               = 'ab930b27-1a22-4acf-b5bf-0add38e87a62'  // VNotes
         ENV_ID               = '2f05f900-45ce-4f65-b213-a0838416d548'  // VNotes -> "Jenkins CI" (cicd)
+        MANUAL_ENV_ID        = 'a3ee1a6a-18a3-471f-891e-c220c0096ea7'  // VNotes -> "Default" (manual/UI scans)
         TEST_GROUP_ID        = '892b51de-67cf-4328-beea-3ade61bcdeb2'  // Default API Security Tests
 
         // Job builds */main only, so BRANCH_NAME is null; GIT_BRANCH is 'origin/main'.
@@ -122,7 +123,10 @@ pipeline {
 
                             # 2. VNotes JWTs expire after 24h: re-login each test user and push fresh
                             #    Bearer tokens into the AT environment's authentications.
+                            #    Also refresh the Default env so manual UI scans stay authenticated.
                             AT_TOKEN="$ACTIVE_API_TOKEN" ./akamai/refresh-auths.sh || exit 2
+                            AT_TOKEN="$ACTIVE_API_TOKEN" ENV_ID="$MANUAL_ENV_ID" ./akamai/refresh-auths.sh \
+                                || echo "WARN: could not refresh auths on Default env (non-fatal)" >&2
 
                             # 3. Pull the active-cli image matching the backend version.
                             CLI_VERSION="$(curl -fsS --max-time 30 "$ACTIVE_BACKEND_URI/version" | tr -d '[:space:]')"

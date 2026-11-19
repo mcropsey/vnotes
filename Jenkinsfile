@@ -40,6 +40,9 @@ pipeline {
         TEST_GROUP_ID        = '892b51de-67cf-4328-beea-3ade61bcdeb2'  // Default API Security Tests
 
         // Job builds */main only, so BRANCH_NAME is null; GIT_BRANCH is 'origin/main'.
+        // params are undefined on the first run after the parameters block is added; default them.
+        SEVERITY_GATE = "${params.SEVERITY_THRESHOLD ?: 'high'}"
+
         APP_VERSION = "${(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main').replaceAll('^origin/', '')}"
     }
 
@@ -57,7 +60,7 @@ pipeline {
         }
 
         stage('Ship code to Docker host') {
-            when { expression { !params.SKIP_DEPLOY } }
+            when { expression { !(params.SKIP_DEPLOY ?: false) } }
             steps {
                 sshagent(credentials: ['vnotes-deploy-ssh']) {
                     sh """
@@ -69,7 +72,7 @@ pipeline {
         }
 
         stage('Build & Deploy') {
-            when { expression { !params.SKIP_DEPLOY } }
+            when { expression { !(params.SKIP_DEPLOY ?: false) } }
             steps {
                 sshagent(credentials: ['vnotes-deploy-ssh']) {
                     sh """
@@ -148,7 +151,7 @@ pipeline {
                                 --env-id="$ENV_ID" \
                                 --test-group-id="$TEST_GROUP_ID" \
                                 --app-version="$APP_VERSION" \
-                                --severity-threshold="$SEVERITY_THRESHOLD" \
+                                --severity-threshold="$SEVERITY_GATE" \
                                 --verbose 2>&1 | tee "$WORKSPACE/akamai/results/scan.log"
                             SCAN_RC=${PIPESTATUS[0]}
                             set -e
@@ -160,7 +163,7 @@ pipeline {
                         ''')
 
                         if (rc == 3) {
-                            unstable("Active Testing found issues at/above '${params.SEVERITY_THRESHOLD}' severity -- see ${env.AT_BASE}/active/applications/${env.APP_ID}")
+                            unstable("Active Testing found issues at/above '${env.SEVERITY_GATE}' severity -- see ${env.AT_BASE}/active/applications/${env.APP_ID}")
                         } else if (rc != 0) {
                             error("Active Testing scan failed to run (exit ${rc})")
                         }

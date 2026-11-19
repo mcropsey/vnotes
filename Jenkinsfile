@@ -1,39 +1,52 @@
+// VNotes: deploy to the lab Docker host, then run an Akamai API Security
+// Active Testing scan against https://notes.cropseyit.com.
+//
+// Active Testing tenant: mikec-lab.nonamesec.com
+//   App  VNotes      ab930b27-1a22-4acf-b5bf-0add38e87a62
+//   Env  Jenkins CI  2f05f900-45ce-4f65-b213-a0838416d548  (type: cicd)
+//
+// Jenkins credentials used (Manage Jenkins > Credentials > System > Global):
+//   vnotes-deploy-ssh          SSH key for the deploy host
+//   mikec-at-registry-key      GAR pull key for the active-cli image (_json_key_base64)
+//   mikec-at-sa-client-id      mikec-lab service account client id
+//   mikec-at-sa-client-secret  mikec-lab service account client secret
+//   vnotes-at-users            "user:pass user:pass ..." test users for AT auth refresh
+
 pipeline {
     agent any
+
+    parameters {
+        choice(name: 'SEVERITY_THRESHOLD', choices: ['high', 'medium', 'low', 'info', 'none'],
+               description: 'Minimum finding severity that gates the build (findings at/above this mark the build UNSTABLE)')
+        booleanParam(name: 'SKIP_DEPLOY', defaultValue: false,
+                     description: 'Skip ship/build/deploy and only run the Active Testing scan')
+    }
 
     environment {
         DEPLOY_HOST = '192.168.1.98'
         DEPLOY_USER = 'mcropsey'
         DEPLOY_PATH = '/home/mcropsey/vnotes'
+        TARGET_URL  = 'https://notes.cropseyit.com'
 
-        // Akamai Active Testing — non-secret identifiers
+        // Akamai Active Testing (mikec-lab) -- non-secret identifiers
+        AT_BASE              = 'https://mikec-lab.nonamesec.com'
+        ACTIVE_API_URL       = 'https://mikec-lab.nonamesec.com/active'
+        ACTIVE_BACKEND_URI   = 'https://mikec-lab.nonamesec.com/active/backend'
+        ACTIVE_TOKEN_URL     = 'https://mikec-lab.nonamesec.com/auth/token'
         ACTIVE_REGISTRY_URL  = 'us-central1-docker.pkg.dev/noname-artifacts/nns-docker'
         ACTIVE_REGISTRY_USER = '_json_key_base64'
-        ACTIVE_API_URL       = 'https://michaelc-lab.nonamesec.com/active'
-        ACTIVE_BACKEND_URI   = 'https://michaelc-lab.nonamesec.com/active/backend'
-        ACTIVE_TOKEN_URL     = 'https://michaelc-lab.nonamesec.com/auth/token'
-        ENV_ID               = '59dc468f-d1ff-4be4-b02e-6f607c9f03f7'  // Notes -> "Jenkins Notes Integration" (cicd)
+        APP_ID               = 'ab930b27-1a22-4acf-b5bf-0add38e87a62'  // VNotes
+        ENV_ID               = '2f05f900-45ce-4f65-b213-a0838416d548'  // VNotes -> "Jenkins CI" (cicd)
         TEST_GROUP_ID        = '892b51de-67cf-4328-beea-3ade61bcdeb2'  // Default API Security Tests
 
-        // Last CLI version confirmed present in GAR. The backend's reported
-        // /version can briefly outpace the published image after a backend
-        // release (seen with 3.71.0 -> 3.71.7, builds 16-18); fall back to
-        // this known-good tag rather than failing the whole pipeline.
-        FALLBACK_CLI_VERSION = '3.71.0'
-
-        // Minimum finding severity that fails the build: high | medium | low | info | none.
-        // Without this flag the scan's exit code only reflects whether it *ran*, not
-        // what it found -- build 31 reported SUCCESS despite HIGH findings because of this.
-        SEVERITY_THRESHOLD = 'high'
-
-        // This job builds */main only, so env.BRANCH_NAME is null here; GIT_BRANCH
-        // resolves to 'origin/main', and the scanner wants the bare branch name.
+        // Job builds */main only, so BRANCH_NAME is null; GIT_BRANCH is 'origin/main'.
         APP_VERSION = "${(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main').replaceAll('^origin/', '')}"
     }
 
     options {
-        timeout(time: 45, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
     }
 
     stages {
@@ -44,6 +57,7 @@ pipeline {
         }
 
         stage('Ship code to Docker host') {
+            when { expression { !params.SKIP_DEPLOY } }
             steps {
                 sshagent(credentials: ['vnotes-deploy-ssh']) {
                     sh """
@@ -55,6 +69,7 @@ pipeline {
         }
 
         stage('Build & Deploy') {
+            when { expression { !params.SKIP_DEPLOY } }
             steps {
                 sshagent(credentials: ['vnotes-deploy-ssh']) {
                     sh """
@@ -68,101 +83,88 @@ pipeline {
             }
         }
 
+        stage('Wait for app') {
+            steps {
+                sh 'curl -fsS --retry 20 --retry-delay 3 --retry-all-errors --max-time 10 "$TARGET_URL/health"'
+            }
+        }
+
         stage('Active Scan') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'active-registry-key',  variable: 'ACTIVE_REGISTRY_PASSWORD'),
-                    string(credentialsId: 'active-cli-client-id', variable: 'SA_CLIENT_ID'),
-                    string(credentialsId: 'active-cli-secret',    variable: 'SA_CLIENT_SECRET'),
+                    string(credentialsId: 'mikec-at-registry-key',     variable: 'ACTIVE_REGISTRY_PASSWORD'),
+                    string(credentialsId: 'mikec-at-sa-client-id',     variable: 'SA_CLIENT_ID'),
+                    string(credentialsId: 'mikec-at-sa-client-secret', variable: 'SA_CLIENT_SECRET'),
+                    string(credentialsId: 'vnotes-at-users',           variable: 'AT_USERS'),
                 ]) {
-                    // Leading shebang stops Jenkins injecting `-x`, so the minted
-                    // bearer token is never echoed to the console log.
-                    sh '''#!/bin/bash
-                        set -euo pipefail
+                    script {
+                        // Shebang stops Jenkins adding `-x`, so tokens are never echoed.
+                        def rc = sh(returnStatus: true, script: '''#!/bin/bash
+                            set -euo pipefail
 
-                        # Resolve the CLI version; fail loudly rather than building a bad image tag.
-                        CLI_VERSION="$(curl -fsS --max-time 30 "$ACTIVE_BACKEND_URI/version" | tr -d '[:space:]')"
-                        case "$CLI_VERSION" in
-                            ''|*[!0-9.]*) echo "Unexpected /version response: '$CLI_VERSION'"; exit 1 ;;
-                        esac
-                        echo "Using active-cli:$CLI_VERSION"
-
-                        # Exchange the service-account client credentials for a short-lived
-                        # API token. The CLI's CORE_CLI_* path only accepts credentials minted
-                        # by the CI/CD wizard, but --api-token/ACTIVE_API_TOKEN accepts this.
-                        # printf is a shell builtin and curl reads the body from stdin, so the
-                        # secrets never appear in the process table.
-                        #
-                        # No -f here: on failure we want the auth server's error body (which
-                        # never contains our secrets, only its own error description) printed
-                        # to the log, instead of curl silently swallowing it.
-                        TOKEN_RESPONSE="$(
-                            printf '{"grant_type":"client_credentials","client_id":"%s","client_secret":"%s"}' \
-                                "$SA_CLIENT_ID" "$SA_CLIENT_SECRET" \
-                            | curl -sS --max-time 30 -w '\n%{http_code}' -X POST "$ACTIVE_TOKEN_URL" \
-                                -H 'Content-Type: application/json' --data-binary @-
-                        )"
-                        TOKEN_HTTP_CODE="$(echo "$TOKEN_RESPONSE" | tail -n1)"
-                        TOKEN_BODY="$(echo "$TOKEN_RESPONSE" | sed '$d')"
-                        # Success is "we got an accessToken", not a specific status code --
-                        # this endpoint returns 201 on success, not 200 (build 27 treated
-                        # a real success as a failure by checking for exactly "200").
-                        ACTIVE_API_TOKEN="$(echo "$TOKEN_BODY" | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
-                        if [ -z "$ACTIVE_API_TOKEN" ]; then
-                            echo "Could not obtain an accessToken from $ACTIVE_TOKEN_URL (HTTP $TOKEN_HTTP_CODE): $TOKEN_BODY" >&2
-                            exit 1
-                        fi
-                        export ACTIVE_API_TOKEN
-                        echo "Obtained Active Testing API token."
-
-                        mkdir -p "$WORKSPACE/akamai"
-
-                        # The registry pull credential is currently dead (confirmed: the
-                        # GCP key backing it was deleted, no self-service reissue available).
-                        # If an older tag is already cached locally on this agent from before
-                        # that broke, use it directly and skip the registry entirely --
-                        # `docker run` only hits the network if the image isn't already present.
-                        FALLBACK_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$FALLBACK_CLI_VERSION"
-                        if docker image inspect "$FALLBACK_IMAGE" >/dev/null 2>&1; then
-                            echo "Using locally cached $FALLBACK_IMAGE (registry pull credential is currently dead)"
-                            ACTIVE_CLI_IMAGE="$FALLBACK_IMAGE"
-                        else
-                            echo "$FALLBACK_IMAGE not cached locally; registry login is required"
-                            # docker login wants the registry HOST only, not the repo path.
-                            # Logging in against the full $ACTIVE_REGISTRY_URL stores the
-                            # credential under that longer string; the later `docker pull`
-                            # resolves the image's registry down to just the host and looks
-                            # up credentials under *that* key, finds nothing, and goes out
-                            # unauthenticated -- surfacing as a generic registry auth error
-                            # even when the credential itself is fine.
-                            ACTIVE_REGISTRY_HOST="${ACTIVE_REGISTRY_URL%%/*}"
-                            echo "$ACTIVE_REGISTRY_PASSWORD" \
-                              | docker login "https://$ACTIVE_REGISTRY_HOST" -u "$ACTIVE_REGISTRY_USER" --password-stdin
-
-                            # The backend can report a CLI version slightly ahead of what's
-                            # actually published to GAR. Try it, and fall back to the last
-                            # known-good tag instead of hard-failing the pipeline.
-                            ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$CLI_VERSION"
-                            if ! docker pull "$ACTIVE_CLI_IMAGE"; then
-                                echo "WARNING: $ACTIVE_CLI_IMAGE not available in registry yet; falling back to active-cli:$FALLBACK_CLI_VERSION" >&2
-                                ACTIVE_CLI_IMAGE="$FALLBACK_IMAGE"
-                                docker pull "$ACTIVE_CLI_IMAGE"
+                            # 1. Service-account client credentials -> short-lived platform token.
+                            #    The CLI accepts it via ACTIVE_API_TOKEN, and it also authorizes the
+                            #    AT REST API used to refresh the test-user auths below.
+                            TOKEN_BODY="$(printf '{"grant_type":"client_credentials","client_id":"%s","client_secret":"%s"}' \
+                                    "$SA_CLIENT_ID" "$SA_CLIENT_SECRET" \
+                                | curl -sS --max-time 30 -X POST "$ACTIVE_TOKEN_URL" \
+                                    -H 'Content-Type: application/json' --data-binary @-)"
+                            ACTIVE_API_TOKEN="$(echo "$TOKEN_BODY" | sed -n 's/.*"accessToken"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p')"
+                            if [ -z "$ACTIVE_API_TOKEN" ]; then
+                                echo "Could not obtain accessToken from $ACTIVE_TOKEN_URL: $TOKEN_BODY" >&2
+                                exit 2
                             fi
-                        fi
+                            export ACTIVE_API_TOKEN
+                            echo "Obtained Active Testing API token."
 
-                        docker run --rm \
-                          -e ACTIVE_BACKEND_URI \
-                          -e ACTIVE_API_TOKEN \
-                          -v "$WORKSPACE/akamai:/akamai" \
-                          "$ACTIVE_CLI_IMAGE" \
-                          scan \
-                            --api-url="$ACTIVE_API_URL" \
-                            --env-id="$ENV_ID" \
-                            --test-group-id="$TEST_GROUP_ID" \
-                            --app-version="$APP_VERSION" \
-                            --severity-threshold="$SEVERITY_THRESHOLD" \
-                            --verbose
-                    '''
+                            # 2. VNotes JWTs expire after 24h: re-login each test user and push fresh
+                            #    Bearer tokens into the AT environment's authentications.
+                            AT_TOKEN="$ACTIVE_API_TOKEN" ./akamai/refresh-auths.sh || exit 2
+
+                            # 3. Pull the active-cli image matching the backend version.
+                            CLI_VERSION="$(curl -fsS --max-time 30 "$ACTIVE_BACKEND_URI/version" | tr -d '[:space:]')"
+                            case "$CLI_VERSION" in
+                                ''|*[!0-9.]*) echo "Unexpected /version response: '$CLI_VERSION'" >&2; exit 2 ;;
+                            esac
+                            echo "Using active-cli:$CLI_VERSION"
+                            # Log in against the registry HOST, not the repo path, or docker pull
+                            # won't find the stored credential.
+                            echo "$ACTIVE_REGISTRY_PASSWORD" \
+                              | docker login "https://${ACTIVE_REGISTRY_URL%%/*}" -u "$ACTIVE_REGISTRY_USER" --password-stdin
+                            ACTIVE_CLI_IMAGE="$ACTIVE_REGISTRY_URL/active-cli:$CLI_VERSION"
+                            docker pull -q "$ACTIVE_CLI_IMAGE" || exit 2
+
+                            # 4. Scan. Exit code is non-zero if the run errors OR findings exceed
+                            #    the severity threshold; tee the log so we can tell which.
+                            mkdir -p "$WORKSPACE/akamai/results"
+                            set +e
+                            docker run --rm \
+                              -e ACTIVE_BACKEND_URI \
+                              -e ACTIVE_API_TOKEN \
+                              -v "$WORKSPACE/akamai:/akamai" \
+                              "$ACTIVE_CLI_IMAGE" \
+                              scan \
+                                --api-url="$ACTIVE_API_URL" \
+                                --env-id="$ENV_ID" \
+                                --test-group-id="$TEST_GROUP_ID" \
+                                --app-version="$APP_VERSION" \
+                                --severity-threshold="$SEVERITY_THRESHOLD" \
+                                --verbose 2>&1 | tee "$WORKSPACE/akamai/results/scan.log"
+                            SCAN_RC=${PIPESTATUS[0]}
+                            set -e
+
+                            if [ "$SCAN_RC" -ne 0 ] && grep -q 'Exceeded severity threshold' "$WORKSPACE/akamai/results/scan.log"; then
+                                exit 3   # scan completed; findings at/above threshold
+                            fi
+                            exit "$SCAN_RC"
+                        ''')
+
+                        if (rc == 3) {
+                            unstable("Active Testing found issues at/above '${params.SEVERITY_THRESHOLD}' severity -- see ${env.AT_BASE}/active/applications/${env.APP_ID}")
+                        } else if (rc != 0) {
+                            error("Active Testing scan failed to run (exit ${rc})")
+                        }
+                    }
                 }
             }
         }
@@ -170,14 +172,11 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'akamai/**', allowEmptyArchive: true
-            sh 'docker logout "$ACTIVE_REGISTRY_URL" || true'
+            archiveArtifacts artifacts: 'akamai/results/**', allowEmptyArchive: true
+            sh 'docker logout "https://${ACTIVE_REGISTRY_URL%%/*}" || true'
         }
-        success {
-            echo 'Deployed and scanned successfully.'
-        }
-        failure {
-            echo 'Build/deploy/scan failed — check console output.'
-        }
+        success  { echo 'Deployed and scanned: no findings at/above threshold.' }
+        unstable { echo 'Deployed and scanned: findings at/above threshold (expected for the vulnerable variant).' }
+        failure  { echo 'Build/deploy/scan failed -- check console output.' }
     }
 }
